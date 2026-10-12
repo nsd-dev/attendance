@@ -234,6 +234,11 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 .rorow .nm{flex:1}
 .privacy{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
   border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);line-height:1.7;margin-top:14px}
+.banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px;
+  border:1px solid var(--late);background:var(--late-bg);color:var(--late);
+  border-radius:var(--r);padding:10px 14px;font-size:13px;font-weight:500}
+.banner span{flex:1}
+.dh.edit{cursor:pointer;color:var(--accent);text-decoration:underline dotted}
 [hidden]{display:none!important}
 @media (max-width:760px){
   .cal{grid-template-columns:1fr;background:var(--surface)}
@@ -275,6 +280,10 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 
 <div class="wrap" id="app" hidden>
   <div id="toast" hidden></div>
+  <div class="banner" id="banner" hidden>
+    <span id="bannerTxt"></span>
+    <button class="mini" id="bannerBack">自分の記録に戻る</button>
+  </div>
 
   <div class="setup" id="setup" hidden>
     <p><b>表示名を決めてください</b><br>メンバー一覧に出る名前です。記録の中身は共有されません。</p>
@@ -312,9 +321,9 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 
   <section id="view-mem" hidden>
     <div class="card">
-      <h2>このクラスのメンバー</h2>
+      <h2>このクラスのメンバー <span class="badge">管理者のみ</span></h2>
       <div class="rolist" id="roster"></div>
-      <div class="privacy">欠席・遅刻の記録は本人以外には表示されません。管理者も他の人の記録は見られません。ここに出るのは名前と管理者かどうかだけです。</div>
+      <div class="privacy">このタブは管理者だけに表示されます。一般のメンバーには、誰がこのページを使っているかも、他人の記録も見えません。管理者は代理で記録を直せます。</div>
     </div>
   </section>
 
@@ -414,6 +423,7 @@ const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorag
 
 let fb=null, fref=null, user=null, online=false, localMode=false;
 let admins={}, roster={}, config={ratio:3,late:0}, myMarks={}, myOff={}, overrides={}, myName="";
+let targetUid=null, targetName="", tsubs=[];
 let TOTALS={}, tab="cal", cview=LS("cview")||"year", mi=0;
 
 /* ---------- schedule ---------- */
@@ -456,6 +466,7 @@ const isAdmin=()=>localMode||!!(user&&admins[user.uid]);
 
 /* ---------- storage ---------- */
 function localSave(){
+  if(targetUid&&user&&targetUid!==user.uid) return;
   try{ LS("marks",JSON.stringify(myMarks)); LS("off",JSON.stringify(myOff));
        LS("config",JSON.stringify(config)); LS("name",myName); LS("ovr",JSON.stringify(overrides)) }catch(e){}
 }
@@ -468,9 +479,10 @@ const pend={m:false,o:false}; let ptimer=null;
 function saveMarks(){
   localSave();
   if(!fref||!user) return;
+  const t=targetUid||user.uid;
   pend.m=true; if(!ptimer) ptimer=setTimeout(()=>{ ptimer=null;
-    if(pend.m){ pend.m=false; fref.child("users/"+user.uid+"/marks").set(myMarks).catch(e=>flash("保存できませんでした: "+esc(e.message))) }
-    if(pend.o){ pend.o=false; fref.child("users/"+user.uid+"/off").set(myOff).catch(()=>{}) }
+    if(pend.m){ pend.m=false; fref.child("users/"+t+"/marks").set(myMarks).catch(e=>flash("保存できませんでした: "+esc(e.message))) }
+    if(pend.o){ pend.o=false; fref.child("users/"+t+"/off").set(myOff).catch(()=>{}) }
   },400);
 }
 function saveOff(){ localSave(); if(fref&&user){ pend.o=true; saveMarks() } }
@@ -535,15 +547,27 @@ function onAuth(){
   fref.child("admins").on("value",s=>{ admins=s.val()||{}; renderAllViews() },oops);
   fref.child("members").on("value",s=>{ roster=s.val()||{};
     const mine=roster[user.uid]; myName=(mine&&mine.name)||myName||"";
-    renderAllViews() },oops);
+    renderAllViews() },()=>{ roster={}; renderAllViews() });
+  fref.child("members/"+user.uid).on("value",s=>{ const v=s.val(); if(v&&v.name){ myName=v.name; localSave(); renderAllViews() } },()=>{});
   fref.child("config").on("value",s=>{ const v=s.val(); if(v) config=Object.assign({ratio:3,late:0},v);
     localSave(); renderAllViews() },oops);
   fref.child("schedule").on("value",s=>{ overrides=s.val()||{}; computeTotals(); localSave(); renderAllViews() },oops);
-  fref.child("users/"+user.uid+"/marks").on("value",s=>{ if(!pend.m){ myMarks=s.val()||{}; localSave(); renderAllViews() } },oops);
-  fref.child("users/"+user.uid+"/off").on("value",s=>{ if(!pend.o){ myOff=s.val()||{}; localSave(); renderAllViews() } },oops);
+  subscribeTarget(user.uid,"");
   if(!myName){ const n=(user.displayName||"").slice(0,12); if(n) saveName(n) }
   renderAllViews();
 }
+function subscribeTarget(uid,name){
+  tsubs.forEach(f=>{try{f()}catch(e){}}); tsubs=[];
+  targetUid=uid; targetName=name||"";
+  myMarks={}; myOff={};
+  const mr=fref.child("users/"+uid+"/marks"), orf=fref.child("users/"+uid+"/off");
+  const cb1=s=>{ if(!pend.m){ myMarks=s.val()||{}; localSave(); renderAllViews() } };
+  const cb2=s=>{ if(!pend.o){ myOff=s.val()||{}; localSave(); renderAllViews() } };
+  mr.on("value",cb1,oops); orf.on("value",cb2,oops);
+  tsubs.push(()=>mr.off("value",cb1),()=>orf.off("value",cb2));
+  renderAllViews();
+}
+$("bannerBack").onclick=()=>{ if(user) subscribeTarget(user.uid,"") };
 $("signin").onclick=()=>{
   if(!fb){ $("gateErr").textContent="Firebase の設定（apiKey）が入っていません。"; $("gateErr").hidden=false; return }
   const p=new firebase.auth.GoogleAuthProvider();
@@ -582,7 +606,9 @@ function renderYear(){
     let c=2;
     spans.forEach(([y,m,dim])=>{ put(g,"mh",(m===4||m===1?y+"年 ":"")+m+"月",1,c,1,dim); c+=dim; });
     dates.forEach(([date,wd,dn],i)=>{
-      put(g,"dh",String(dn)+(overrides[date]?"*":""),2,i+2);
+      const dh=put(g,"dh"+(isAdmin()?" edit":""),String(dn)+(overrides[date]?"*":""),2,i+2);
+      if(isAdmin()) dh.onclick=()=>{ show("set"); $("edDate").value=date; renderEditor(date);
+        $("schedCard").scrollIntoView({block:"start"}); };
       put(g,"wh"+(wd===5?" sat":wd===6?" sun":""),DOW[wd],3,i+2);
     });
     for(let p=1;p<=5;p++) put(g,"rl",p+"",3+p,1);
@@ -626,7 +652,8 @@ function renderCal(){
     const cell=document.createElement("div");
     cell.className="day"+(items.length?"":" empty")+(date===tk?" today":"");
     const wd=(new Date(y,m-1,d).getDay()+6)%7;
-    cell.innerHTML='<div class="dnum"><b>'+d+'</b><span'+(wd>4?' style="color:var(--'+(wd===5?'excused':'absent')+')"':'')+'>'+DOW[wd]+'</span></div>';
+    cell.innerHTML='<div class="dnum"><b'+(isAdmin()?' class="edit" style="cursor:pointer;text-decoration:underline dotted"':'')+'>'+d+(overrides[date]?"*":"")+'</b><span'+(wd>4?' style="color:var(--'+(wd===5?'excused':'absent')+')"':'')+'>'+DOW[wd]+'</span></div>';
+    if(isAdmin()) cell.querySelector(".dnum b").onclick=()=>{ show("set"); $("edDate").value=date; renderEditor(date); $("schedCard").scrollIntoView({block:"start"}) };
     const box=document.createElement("div"); box.className="slots";
     items.forEach(it=>{
       const key=date+"|"+it[0][0], st=myMarks[key]||"";
@@ -689,6 +716,12 @@ function renderRoster(){
     const r=document.createElement("div"); r.className="rorow";
     r.innerHTML='<span class="nm">'+esc(m.name||"名前未設定")+(user&&uid===user.uid?' <span style="font-size:11px;color:var(--muted)">あなた</span>':'')+'</span>'+
       (admins[uid]?'<span class="badge">管理者</span>':'');
+    if(!localMode&&user&&uid!==user.uid&&isAdmin()){
+      const b=document.createElement("button"); b.className="mini";
+      b.textContent=(targetUid===uid?"編集中":"記録を見る・直す"); b.disabled=targetUid===uid;
+      b.onclick=()=>{ subscribeTarget(uid,m.name||"名前未設定"); show("cal"); flash(esc(m.name||"この人")+" さんの記録を開きました") };
+      r.appendChild(b);
+    }
     el.appendChild(r);
   });
 }
@@ -787,8 +820,15 @@ function show(t){
   ["cal","sub","mem","set"].forEach(k=>{ $("view-"+k).hidden=k!==t; $("tab-"+k).setAttribute("aria-selected",String(k===t)) });
   renderAllViews();
 }
+function renderBanner(){
+  const other=!!(user&&targetUid&&targetUid!==user.uid);
+  $("banner").hidden=!other;
+  if(other) $("bannerTxt").textContent=targetName+" さんの記録を代理で編集しています。押した内容はその人の記録に保存されます。";
+}
 function renderAllViews(){
-  computeTotals(); setStatus(); renderWho(); renderStrip();
+  computeTotals(); setStatus(); renderWho(); renderBanner(); renderStrip();
+  $("tab-mem").hidden=!isAdmin()||localMode;
+  if(tab==="mem"&&($("tab-mem").hidden)) { tab="cal"; ["cal","sub","mem","set"].forEach(k=>{ $("view-"+k).hidden=k!=="cal"; $("tab-"+k).setAttribute("aria-selected",String(k==="cal")) }); }
   if(tab==="cal"){
     const y=cview==="year";
     $("year").hidden=!y; $("months").hidden=y; $("cal").hidden=y;
