@@ -6,19 +6,22 @@
 <style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>欠席バジェット</title>
 <!-- ============================================================
-     Firebase Realtime Database の設定（設定済み）
-     ・databaseURL を自分のものに変えれば別のDBにつながります
-     ・ROOM を同じ文字列にした人どうしで記録が共有されます
-     ・空にすると「この端末だけに保存」モードで動きます
+     Firebase の設定
+     apiKey と authDomain は Firebase コンソールの
+     「プロジェクトの設定 → マイアプリ（ウェブ）」でコピーできます。
+     ROOM を同じ文字列にした人どうしで同じクラスになります。
      ============================================================ -->
 <script>
 var FB_CONFIG = {
+  apiKey:      "AIzaSyA3TrDojyXo91_o6msXcx9xznmr7OuM_w4",
+  authDomain:  "aqqa-a0b1c.firebaseapp.com",
   databaseURL: "https://aqqa-a0b1c.firebaseio.com",
   projectId:   "aqqa-a0b1c"
 };
 var ROOM = "ika1-2026";
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -117,7 +120,7 @@ input[type=text]{border:1px solid var(--line);background:var(--surface);color:va
 .slot{display:flex;align-items:center;gap:5px;width:100%;text-align:left;border:0;border-radius:6px;
   padding:3px 6px 3px 4px;font-size:12px;line-height:1.35;background:var(--surface2);color:var(--ink);
   border-left:3px solid transparent}
-.slot .p{font-size:10px;color:var(--muted);flex:none;min-width:10px;text-align:center}
+.slot .p{font-size:10px;color:var(--muted);flex:none;width:10px;text-align:center}
 .slot .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .slot.ghost{background:transparent;color:var(--faint);font-size:11px}
 .slot.a{background:var(--absent-bg);border-left-color:var(--absent);color:var(--absent);font-weight:500}
@@ -214,6 +217,23 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 .st.on i{background:var(--ok)} .st.off i{background:var(--late)}
 .steps{margin:0;padding-left:1.2em;font-size:13px;line-height:1.8}
 .steps code{font-family:"JetBrains Mono",monospace;font-size:12px;background:var(--surface2);padding:1px 5px;border-radius:4px;word-break:break-all}
+.gate{max-width:420px;margin:12vh auto 0;text-align:center;padding:0 16px}
+.gate h2{font-size:20px;margin:0 0 8px}
+.gate p{color:var(--muted);font-size:14px;margin:0 0 20px;line-height:1.7}
+.gbtn{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--surface);
+  border-radius:10px;padding:11px 20px;font-size:15px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.me{display:inline-flex;align-items:center;gap:7px;font-size:13px}
+.me img{width:22px;height:22px;border-radius:50%}
+.badge{font-size:10px;letter-spacing:.06em;background:var(--accent-soft);color:var(--accent);
+  border-radius:999px;padding:2px 8px;font-weight:700}
+.ed{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.ed .pn{font-size:12px;color:var(--muted);text-align:center}
+.ed select,.ed input{width:100%}
+.rolist{display:flex;flex-direction:column;gap:8px}
+.rorow{display:flex;gap:10px;align-items:center;font-size:14px}
+.rorow .nm{flex:1}
+.privacy{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
+  border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);line-height:1.7;margin-top:14px}
 [hidden]{display:none!important}
 @media (max-width:760px){
   .cal{grid-template-columns:1fr;background:var(--surface)}
@@ -225,7 +245,7 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
   .strip{grid-template-columns:1fr 1fr}
   h1{font-size:15px}
 }
-@media (min-width:761px){ .day .slots{display:flex;flex-direction:column;gap:3px;min-width:0} .day .dnum span{display:none} }
+@media (min-width:761px){ .day .slots{display:flex;flex-direction:column;gap:3px;min-width:0} }
 @media (prefers-reduced-motion:no-preference){.slot{transition:background .12s,color .12s}}
 </style>
 </head>
@@ -240,19 +260,27 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
     <nav id="tabs" role="tablist">
       <button role="tab" id="tab-cal" aria-selected="true">カレンダー</button>
       <button role="tab" id="tab-sub" aria-selected="false">科目別</button>
-      <button role="tab" id="tab-all" aria-selected="false">みんな</button>
+      <button role="tab" id="tab-mem" aria-selected="false">メンバー</button>
       <button role="tab" id="tab-set" aria-selected="false">設定</button>
     </nav>
   </div>
 </header>
 
-<div class="wrap">
-  <div class="setup" id="setup" hidden>
-    <p><b>まず自分を登録</b><br>名前を入れると記録を始められます。あとから友だちも追加できます。</p>
-    <input type="text" id="newName" placeholder="なまえ" maxlength="12" autocomplete="off">
-    <button class="btn" id="addFirst">追加</button>
-  </div>
+<div id="gate" class="gate" hidden>
+  <h2>ログインしてはじめる</h2>
+  <p>あなたの欠席記録はあなたにしか見えません。<br>同じクラスの人と同じページを使っても、お互いの中身は見えない仕組みです。</p>
+  <button class="gbtn" id="signin">Google でログイン</button>
+  <p id="gateErr" style="color:var(--danger);margin-top:16px;font-size:13px" hidden></p>
+</div>
+
+<div class="wrap" id="app" hidden>
   <div id="toast" hidden></div>
+
+  <div class="setup" id="setup" hidden>
+    <p><b>表示名を決めてください</b><br>メンバー一覧に出る名前です。記録の中身は共有されません。</p>
+    <input type="text" id="newName" placeholder="なまえ" maxlength="12" autocomplete="off">
+    <button class="btn" id="addFirst">決定</button>
+  </div>
 
   <section id="view-cal">
     <div class="strip" id="calStrip"></div>
@@ -261,7 +289,7 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
         <button id="sw-year" aria-pressed="true">年間表</button>
         <button id="sw-month" aria-pressed="false">月ごと</button>
       </div>
-      <span class="hint" id="calHint">配付の年間スケジュールと同じ並びです。横にスクロールしてください。</span>
+      <span class="hint" id="calHint">配付の年間スケジュールと同じ並びです。横にスクロールしてコマを押してください。</span>
     </div>
     <div class="year" id="year"></div>
     <div class="months" id="months" hidden></div>
@@ -273,55 +301,30 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
       <span><i style="background:var(--excused)"></i>公欠</span>
       <span><i style="background:var(--surface2);border:1px solid var(--line)"></i>出席</span>
     </div>
-    <p class="note">どのコマも押せます。うすいグレーのコマ（試験・休日・行事・予備コマS）は記録だけ残り、科目の集計には入りません。遅刻も記録のみで、残り回数には影響しません。</p>
+    <p class="note">どのコマも押せます。うすいグレーのコマ（試験・休日・行事・予備コマS）は記録だけ残り、科目の集計には入りません。授業変更があった日は管理者が時間割を直すと、全員の表と残り回数に反映されます。</p>
   </section>
 
   <section id="view-sub" hidden>
     <div class="strip" id="subStrip"></div>
     <div class="subs" id="subs"></div>
-    <p class="note">残り＝あと何コマ休めるか。遅刻は記録するだけで残り回数には影響しません。A班／B班のように自分が出ない科目は「除外」で集計から外せます。</p>
+    <p class="note">残り＝あと何コマ休めるか。A班／B班のように自分が出ない科目は「除外」で集計から外せます（この設定はあなただけに効きます）。</p>
   </section>
 
-  <section id="view-all" hidden>
-    <div class="scroll"><table id="allTable"></table></div>
-    <p class="note">数字は「あと休めるコマ数」。マイナスは出席日数が足りていない科目です。</p>
+  <section id="view-mem" hidden>
+    <div class="card">
+      <h2>このクラスのメンバー</h2>
+      <div class="rolist" id="roster"></div>
+      <div class="privacy">欠席・遅刻の記録は本人以外には表示されません。管理者も他の人の記録は見られません。ここに出るのは名前と管理者かどうかだけです。</div>
+    </div>
   </section>
 
   <section id="view-set" hidden>
     <div class="card">
-      <h2>メンバー</h2>
-      <div class="mlist" id="mlist"></div>
-      <div class="frow" style="margin-top:10px">
-        <input type="text" id="addName" placeholder="なまえを追加" maxlength="12" autocomplete="off">
-        <button class="btn ghost" id="addBtn">＋ 追加</button>
-      </div>
-    </div>
-    <div class="card" id="shareCard">
-      <h2>友だちと見せ合う</h2>
-      <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">記録はこの端末の中だけに保存されます。見せ合うときは「共有コード」を送り合ってください。相手の名前で自動的にメンバーが増えます。</p>
-      <div class="codebox">
-        <button class="btn" id="myCode">自分のコードをコピー</button>
-      </div>
-      <div class="frow col" style="margin-top:12px">
-        <label for="codeIn">もらったコードを貼り付け</label>
-        <textarea id="codeIn" placeholder="K1..." spellcheck="false"></textarea>
-        <div><button class="btn ghost" id="readCode">読み込む</button></div>
-        <textarea id="codeOut" hidden readonly spellcheck="false"></textarea>
-      </div>
-    </div>
-    <div class="card" id="syncCard" hidden>
-      <h2>自動同期</h2>
-      <p style="margin:0;font-size:13px;color:var(--muted)" id="syncState"></p>
-    </div>
-    <div class="card">
-      <h2>ルール</h2>
+      <h2>あなたの設定</h2>
       <div class="frow">
-        <label for="ratio">欠席できる上限<small>総コマ数に対する割合。超えると単位が出ません。</small></label>
-        <select id="ratio">
-          <option value="3">1/3 まで</option>
-          <option value="4">1/4 まで</option>
-          <option value="5">1/5 まで</option>
-        </select>
+        <label for="dispName">表示名<small>メンバー一覧に出る名前</small></label>
+        <input type="text" id="dispName" maxlength="12" autocomplete="off">
+        <button class="mini" id="saveName">保存</button>
       </div>
       <div class="frow">
         <label for="theme">表示テーマ<small></small></label>
@@ -331,134 +334,110 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
           <option value="dark">ダーク</option>
         </select>
       </div>
+      <div class="frow">
+        <label>バックアップ<small>記録をファイルに書き出し／読み込み</small></label>
+        <button class="mini" id="expBtn">書き出す</button>
+        <button class="mini" id="impBtn">読み込む</button>
+        <input type="file" id="impFile" accept="application/json" hidden>
+      </div>
+      <div class="frow" id="acctRow">
+        <label>ログイン<small id="acct"></small></label>
+        <button class="mini" id="signout">ログアウト</button>
+      </div>
     </div>
-    <p class="note" id="syncNote">記録はこの端末のブラウザに保存されます。ブラウザの履歴やサイトデータを消すと記録も消えるので、大事なときは共有コードを自分あてに送っておくと安心です。</p>
+
+    <div class="card" id="adminCard" hidden>
+      <h2>ルール <span class="badge">管理者のみ</span></h2>
+      <div class="frow">
+        <label for="ratio">欠席できる上限<small>総コマ数に対する割合。超えると単位が出ません。</small></label>
+        <select id="ratio">
+          <option value="3">1/3 まで</option>
+          <option value="4">1/4 まで</option>
+          <option value="5">1/5 まで</option>
+        </select>
+      </div>
+      <div class="frow">
+        <label for="late">遅刻の換算<small>遅刻が何回で欠席1回分になるか。</small></label>
+        <select id="late">
+          <option value="0">欠席に含めない（記録のみ）</option>
+          <option value="3">遅刻3回＝欠席1回</option>
+          <option value="2">遅刻2回＝欠席1回</option>
+          <option value="1">遅刻1回＝欠席1回</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card" id="adminMgr" hidden>
+      <h2>管理者 <span class="badge">管理者のみ</span></h2>
+      <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">管理者は2人までです。ルールの変更と授業変更ができます。</p>
+      <div class="rolist" id="adminList"></div>
+    </div>
+
+    <div class="card" id="schedCard" hidden>
+      <h2>授業変更 <span class="badge">管理者のみ</span></h2>
+      <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">休講・補講・科目の差し替えを日付ごとに直します。保存すると全員の時間割と残り回数に反映されます。</p>
+      <div class="frow">
+        <label for="edDate">日付</label>
+        <input type="date" id="edDate" min="2026-04-01" max="2027-03-31">
+        <button class="mini" id="edLoad">読み込む</button>
+      </div>
+      <div id="edRows" hidden>
+        <div class="ed" style="font-size:11px;color:var(--muted)"><span></span><span>科目（集計対象）</span><span>表示名</span></div>
+        <div id="edBody"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn" id="edSave">保存</button>
+          <button class="mini" id="edReset">配付どおりに戻す</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="syncCard" hidden>
+      <h2>同期</h2>
+      <p style="margin:0;font-size:13px;color:var(--muted)" id="syncState"></p>
+    </div>
+    <p class="note" id="syncNote"></p>
   </section>
 </div>
 
 <script>const DATA={"d":{"2026-04-03":[[[1,2,3,4,5],"学内OR",""]],"2026-04-05":[[[1,2,3,4,5],"入学式",""]],"2026-04-06":[[[1],"教務OR",""],[[2],"ようこそ","ようこそ"],[[3],"医情報","医情報"],[[4],"UI","医学概論入門"],[[5],"1年ガイダンス",""]],"2026-04-07":[[[1,2],"健康診断",""],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-04-08":[[[1,2],"英語PT",""],[[3],"ようこそ","ようこそ"],[[4],"基礎理科","基礎理科"],[[5],"ようこそ","ようこそ"]],"2026-04-09":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-04-10":[[[1],"ようこそ","ようこそ"],[[2],"基礎理科","基礎理科"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-04-13":[[[1],"薬物","特別講義"],[[2],"医物","医物"],[[3],"基礎理科","基礎理科"],[[4,5],"健康科学","健康科学"]],"2026-04-14":[[[1],"UI","医学概論入門"],[[2],"UI","医学概論入門"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-04-15":[[[1],"ようこそ","ようこそ"],[[2],"基礎理科","基礎理科"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"アンプロ","特別講義"]],"2026-04-16":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-04-17":[[[1,2,3,4,5],"新入生OR",""]],"2026-04-18":[[[1,2,3,4,5],"新入生OR",""]],"2026-04-20":[[[1],"UC","医学概論入門"],[[2],"UC","医学概論入門"],[[3],"基礎理科","基礎理科"],[[4,5],"健康科学","健康科学"]],"2026-04-21":[[[1],"ようこそ","ようこそ"],[[2],"基礎理科","基礎理科"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-04-22":[[[1],"ようこそ","ようこそ"],[[2],"基礎理科","基礎理科"],[[3],"動教訓","動教訓"],[[4],"動教訓試験","動教訓"],[[5],"ワクチン",""]],"2026-04-23":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-04-24":[[[1],"ようこそ","ようこそ"],[[2],"ようこそ","ようこそ"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-04-27":[[[1],"UC","医学概論入門"],[[2],"UC","医学概論入門"],[[3],"ようこそ","ようこそ"],[[4,5],"健康科学","健康科学"]],"2026-04-28":[[[1],"動教訓再試",""],[[2],"基礎理科","基礎理科"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-04-29":[[[1,2,3,4,5],"昭和の日",""]],"2026-04-30":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-05-01":[[[1],"ようこそ","ようこそ"],[[2],"基礎理科","基礎理科"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-05-03":[[[1,2,3,4,5],"憲法記念日",""]],"2026-05-04":[[[1,2,3,4,5],"みどりの日",""]],"2026-05-05":[[[1,2,3,4,5],"こどもの日",""]],"2026-05-06":[[[1,2,3,4,5],"振替休日",""]],"2026-05-07":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-05-08":[[[1],"基礎理科試験","基礎理科"],[[2],"ようこそ","ようこそ"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-05-11":[[[1],"UC","医学概論入門"],[[2],"UC","医学概論入門"],[[3],"統計","統計"],[[4,5],"健康科学","健康科学"]],"2026-05-12":[[[1],"医物","医物"],[[2],"生物","生物"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-05-13":[[[1],"統計","統計"],[[2],"UP","医学概論入門"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"ハラスメント",""]],"2026-05-14":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-05-15":[[[1],"生物","生物"],[[2],"UW","医学概論入門"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-05-18":[[[1],"基物化","基物化"],[[2],"医情報","医情報"],[[3],"統計","統計"],[[4,5],"健康科学","健康科学"]],"2026-05-19":[[[1],"生物","生物"],[[2],"医物","医物"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-05-20":[[[1],"統計","統計"],[[2],"UP","医学概論入門"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"アル中","特別講義"]],"2026-05-21":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-05-22":[[[1],"基物化","基物化"],[[2],"UW","医学概論入門"],[[3,4],"ECEⅠガイダンス",""],[[5],"S",""]],"2026-05-25":[[[1],"基礎理科再試",""],[[2],"医情報","医情報"],[[3],"統計","統計"],[[4,5],"健康科学","健康科学"]],"2026-05-26":[[[1],"医物","医物"],[[2],"基物化","基物化"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-05-27":[[[1],"統計","統計"],[[2],"UP","医学概論入門"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"ワクチン",""]],"2026-05-28":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-05-29":[[[1],"医物","医物"],[[2],"UW","医学概論入門"],[[3,4],"医情実B/心理実A","医情実B"],[[5],"S",""]],"2026-06-01":[[[1],"ネット","特別講義"],[[2],"生物","生物"],[[3],"医情報","医情報"],[[4,5],"健康科学","健康科学"]],"2026-06-02":[[[1],"医物","医物"],[[2],"統計","統計"],[[3,4],"医情実A/心理実B","医情実A"],[[5],"S",""]],"2026-06-03":[[[1],"基物化","基物化"],[[2],"UP","医学概論入門"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"身だしなみ",""]],"2026-06-04":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-06-05":[[[1,2,3,4,5],"ECEⅠ（4学部合同病棟実習）","医情実B"]],"2026-06-08":[[[1],"S",""],[[2],"医物","医物"],[[3],"基物化","基物化"],[[4,5],"健康科学","健康科学"]],"2026-06-09":[[[1],"生物","生物"],[[2],"UW","医学概論入門"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-06-10":[[[1],"基物化","基物化"],[[2],"統計","統計"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"UP発","医学概論入門"]],"2026-06-11":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-06-12":[[[1,2,3,4,5],"ECEⅠ（4学部合同病棟実習）","心理実A"]],"2026-06-15":[[[1],"S",""],[[2],"生物","生物"],[[3],"基物化","基物化"],[[4,5],"健康科学","健康科学"]],"2026-06-16":[[[1],"医物","医物"],[[2],"UW","医学概論入門"],[[3],"心理","心理"],[[4,5],"自然科学実習","自然科学実習"]],"2026-06-17":[[[1],"統計","統計"],[[2],"UP","医学概論入門"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"S",""]],"2026-06-18":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-06-19":[[[1,2,3,4,5],"ECEⅠ（4学部合同病棟実習）","医情実B"]],"2026-06-22":[[[1],"統計","統計"],[[2],"生物","生物"],[[3],"基物化","基物化"],[[4,5],"健康科学","健康科学"]],"2026-06-23":[[[1],"医物","医物"],[[2],"UW","医学概論入門"],[[3],"統計","統計"],[[4,5],"自然科学実習","自然科学実習"]],"2026-06-24":[[[1],"基物化","基物化"],[[2],"生物","生物"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"UP発","医学概論入門"]],"2026-06-25":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-06-26":[[[1,2,3,4,5],"ECEⅠ（4学部合同病棟実習）","心理実A"]],"2026-06-29":[[[1],"生物","生物"],[[2],"US","医学概論入門"],[[3],"基物化","基物化"],[[4],"医物","医物"],[[5],"S",""]],"2026-06-30":[[[1],"医物","医物"],[[2],"UW","医学概論入門"],[[3],"心理","心理"],[[4,5],"自然科学実習","自然科学実習"]],"2026-07-01":[[[1],"統計","統計"],[[2],"生物","生物"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"S",""]],"2026-07-02":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-07-03":[[[1],"医情報","医情報"],[[2],"US","医学概論入門"],[[3],"統計","統計"],[[4,5],"自然科学実習","自然科学実習"]],"2026-07-06":[[[1],"生物","生物"],[[2],"統計","統計"],[[3],"基物化","基物化"],[[4],"心理","心理"],[[5],"S",""]],"2026-07-07":[[[1],"基物化","基物化"],[[2],"US","医学概論入門"],[[3],"心理","心理"],[[4,5],"自然科学実習","自然科学実習"]],"2026-07-08":[[[1],"統計","統計"],[[2],"生物","生物"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"ワクチン",""]],"2026-07-09":[[[1,2,3,4,5],"関学授業日","関学授業日"]],"2026-07-10":[[[1],"生物","生物"],[[2],"医物","医物"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-07-13":[[[1],"生物","生物"],[[2],"US","医学概論入門"],[[3,4],"ECEⅠガイダンス",""],[[5],"S",""]],"2026-07-14":[[[1],"基物化","基物化"],[[2],"統計","統計"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-07-15":[[[1],"医情報","医情報"],[[2],"生物","生物"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"S",""]],"2026-07-16":[[[1,2,3,4,5],"関学試験日",""]],"2026-07-17":[[[1],"心理","心理"],[[2],"US","医学概論入門"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-07-20":[[[1,2,3,4,5],"海の日",""]],"2026-07-21":[[[1,2,3,4,5],"ECEⅠ（医学部病棟実習）","ECEⅠ"]],"2026-07-22":[[[1,2,3,4,5],"ECEⅠ（医学部病棟実習）","ECEⅠ"]],"2026-07-23":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-07-24":[[[1,2,3,4,5],"関学追試日",""]],"2026-07-25":[[[1,2,3,4,5],"関学追試日",""]],"2026-07-27":[[[1,2,3,4,5],"関学追試日",""]],"2026-07-28":[[[2],"医物","医物"],[[3,4],"健康科学試験",""]],"2026-07-29":[[[1,2],"医情報学試験",""],[[3,4],"統計学試験",""]],"2026-07-30":[[[1,2],"基物化試験",""]],"2026-07-31":[[[1,2],"生物試験",""],[[3,4],"自然科学実習予備",""]],"2026-08-03":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-04":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-05":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-06":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-07":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-11":[[[1,2,3,4,5],"山の日",""]],"2026-08-19":[[[1,2,3,4,5],"補講",""]],"2026-08-20":[[[1,2,3,4,5],"補講",""]],"2026-08-21":[[[1,2,3,4,5],"補講",""]],"2026-08-24":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-08-25":[[[1,2],"統計学再試",""],[[3,4],"健康科学再試",""]],"2026-08-26":[[[1,2],"基物化再試",""],[[3,4],"医情報再試",""]],"2026-08-27":[[[1,2],"生物再試",""],[[3,4],"医療コミ","医療コミ"]],"2026-08-28":[[[1],"心理","心理"],[[2],"化学","化学"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-08-31":[[[1],"細生","細生"],[[2],"心理","心理"],[[3],"医物","医物"],[[4],"化学","化学"],[[5],"ワクチン",""]],"2026-09-01":[[[1],"細生","細生"],[[2],"心理","心理"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-02":[[[1],"化学","化学"],[[2],"医物","医物"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-09-03":[[[1],"細生","細生"],[[2],"化学","化学"],[[3],"心理","心理"],[[4],"医物","医物"],[[5],"S",""]],"2026-09-04":[[[1],"化学","化学"],[[2],"細生","細生"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-07":[[[1],"細生","細生"],[[2],"医物","医物"],[[3],"心理","心理"],[[4],"化学","化学"],[[5],"化学","化学"]],"2026-09-08":[[[1],"医物","医物"],[[2],"細生","細生"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-09":[[[1,2,3,4,5],"ECEⅠ（チーム医療入門）","ECEⅠ"]],"2026-09-10":[[[1,2,3,4,5],"ECEⅠ（チーム医療入門）","ECEⅠ"]],"2026-09-11":[[[1,2,3,4,5],"ECEⅠ（チーム医療入門）","ECEⅠ"]],"2026-09-14":[[[1],"医物","医物"],[[2],"細生","細生"],[[3],"細生","細生"],[[4],"心理","心理"],[[5],"化学","化学"]],"2026-09-15":[[[1],"細生","細生"],[[2],"心理","心理"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-16":[[[1],"細生","細生"],[[2],"化学","化学"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-09-17":[[[1],"細生","細生"],[[2],"化学","化学"],[[3],"化学","化学"],[[4],"心理","心理"],[[5],"細生","細生"]],"2026-09-18":[[[1],"心理","心理"],[[2],"細生","細生"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-21":[[[1,2,3,4,5],"敬老の日",""]],"2026-09-22":[[[1,2,3,4,5],"秋分の日",""]],"2026-09-23":[[[1,2,3,4,5],"国民の休日",""]],"2026-09-24":[[[1],"細生","細生"],[[2],"心理","心理"],[[3],"化学","化学"],[[4],"医物","医物"],[[5],"心理","心理"]],"2026-09-25":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-28":[[[1],"細生","細生"],[[2],"化学","化学"],[[3],"医物","医物"],[[4],"心理","心理"],[[5],"S",""]],"2026-09-29":[[[1],"細生","細生"],[[2],"医物","医物"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-09-30":[[[1],"化学","化学"],[[2],"細生","細生"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-10-01":[[[1],"細生","細生"],[[2],"医物","医物"],[[3,4],"医療コミ","医療コミ"]],"2026-10-02":[[[1],"S",""],[[2],"心理","心理"],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-10-05":[[[3,4],"医物試験",""]],"2026-10-06":[[[3,4],"心理試験",""]],"2026-10-07":[[[3,4],"化学試験",""]],"2026-10-08":[[[1,2],"細生試験",""],[[3,4],"自然科学実習","自然科学実習"],[[5],"S",""]],"2026-10-09":[[[1],"タンパク","タンパク"],[[2],"タンパク","タンパク"],[[3],"組織","組織"],[[4],"筋骨","筋骨"],[[5],"筋骨","筋骨"]],"2026-10-12":[[[1,2,3,4,5],"スポーツの日",""]],"2026-10-13":[[[1],"組織","組織"],[[2],"組織","組織"],[[3],"タンパク","タンパク"],[[4],"タンパク","タンパク"],[[5],"組織","組織"]],"2026-10-14":[[[1],"循呼","循呼"],[[2],"筋骨","筋骨"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-10-15":[[[1],"糖脂","糖脂"],[[2],"循呼","循呼"],[[3],"筋骨","筋骨"],[[4,5],"筋骨実習","筋骨"]],"2026-10-16":[[[1],"組織","組織"],[[2],"組織","組織"],[[3],"筋骨","筋骨"],[[4,5],"筋骨実習","筋骨"]],"2026-10-19":[[[1],"糖脂","糖脂"],[[2],"組織","組織"],[[3,4,5],"組織実習","組織"]],"2026-10-20":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3],"循呼","循呼"],[[4],"循呼","循呼"],[[5],"タンパク","タンパク"]],"2026-10-21":[[[1],"筋骨","筋骨"],[[2],"筋骨","筋骨"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-10-22":[[[1],"循呼","循呼"],[[2],"S",""],[[3,4,5],"組織実習","組織"]],"2026-10-23":[[[1],"循呼","循呼"],[[2],"循呼","循呼"],[[3],"筋骨","筋骨"],[[4,5],"筋骨実習","筋骨"]],"2026-10-26":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3],"タンパク","タンパク"],[[4],"タンパク","タンパク"],[[5],"S",""]],"2026-10-27":[[[1],"循呼","循呼"],[[2],"循呼","循呼"],[[3,4],"循呼実習","循呼"],[[5],"S",""]],"2026-10-28":[[[1],"糖脂","糖脂"],[[2],"タンパク","タンパク"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-10-29":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3],"TBL","TBL"],[[4,5],"循呼実習","循呼"]],"2026-10-30":[[[1,2,3,4],"医療コミ","医療コミ"],[[5],"S",""]],"2026-11-02":[[[1,2],"化学再試",""],[[3,4],"心理再試",""],[[5],"S",""]],"2026-11-03":[[[1,2,3,4,5],"文化の日",""]],"2026-11-04":[[[1],"消化","消化"],[[2],"循呼","循呼"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-11-05":[[[1],"消化","消化"],[[2],"消化","消化"],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-11-06":[[[1],"筋骨中間試験",""],[[2],"循呼","循呼"],[[3],"循呼","循呼"],[[4,5],"循呼実習","循呼"]],"2026-11-09":[[[1],"消化","消化"],[[2],"消化","消化"],[[3,4,5],"消化実習","消化"]],"2026-11-10":[[[1],"筋骨","筋骨"],[[2],"筋骨","筋骨"],[[3],"解剖Ⅳ","解剖Ⅳ"],[[4],"解剖Ⅳ","解剖Ⅳ"],[[5],"インフル",""]],"2026-11-11":[[[1],"筋骨","筋骨"],[[2],"筋骨","筋骨"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-11-12":[[[1,2],"細生再試",""],[[3,4],"医物再試",""],[[5],"S",""]],"2026-11-13":[[[1],"消化","消化"],[[2],"消化","消化"],[[3,4,5],"消化実習","消化"]],"2026-11-15":[[[1,2,3,4,5],"入試",""]],"2026-11-16":[[[1],"解剖Ⅳ","解剖Ⅳ"],[[2],"解剖Ⅳ","解剖Ⅳ"],[[3],"タンパク","タンパク"],[[4],"タンパク","タンパク"],[[5],"S",""]],"2026-11-17":[[[1],"筋骨","筋骨"],[[2],"筋骨","筋骨"],[[3,4],"解剖Ⅳ実習","解剖Ⅳ"],[[5],"S",""]],"2026-11-18":[[[1],"TBL","TBL"],[[2],"TBL","TBL"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-11-19":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3,4,5],"消化実習","消化"]],"2026-11-20":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3],"TBL","TBL"],[[4],"TBL","TBL"],[[5],"TBL","TBL"]],"2026-11-21":[[[1,2,3,4,5],"大学祭",""]],"2026-11-22":[[[1,2,3,4,5],"大学祭",""]],"2026-11-23":[[[1,2,3,4,5],"勤労感謝の日",""]],"2026-11-24":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3,4,5],"消化実習","消化"]],"2026-11-25":[[[1],"タンパク","タンパク"],[[2],"タンパク","タンパク"],[[3,4],"英語Ⅰ","英語Ⅰ"],[[5],"特演",""]],"2026-11-26":[[[1],"タンパク","タンパク"],[[2],"タンパク","タンパク"],[[3],"TBL","TBL"],[[4],"TBL","TBL"],[[5],"S",""]],"2026-11-27":[[[1],"糖脂","糖脂"],[[2],"糖脂","糖脂"],[[3],"解剖Ⅳ","解剖Ⅳ"],[[4],"解剖Ⅳ","解剖Ⅳ"],[[5],"解剖Ⅳ","解剖Ⅳ"]],"2026-11-30":[[[1],"解剖Ⅳ","解剖Ⅳ"],[[2],"解剖Ⅳ","解剖Ⅳ"],[[3],"タンパク","タンパク"],[[4],"タンパク","タンパク"],[[5],"S",""]],"2026-12-01":[[[1],"解剖Ⅳ","解剖Ⅳ"],[[2],"解剖Ⅳ","解剖Ⅳ"],[[3,4],"解剖Ⅳ実習","解剖Ⅳ"],[[5],"動物慰霊祭",""]],"2026-12-02":[[[1,2],"英語ⅠR試験",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2026-12-03":[[[1],"解剖Ⅳ","解剖Ⅳ"],[[2],"解剖Ⅳ","解剖Ⅳ"],[[3],"糖脂","糖脂"],[[4],"S",""],[[5],"S",""]],"2026-12-04":[[[1],"解剖Ⅳ","解剖Ⅳ"],[[2],"解剖Ⅳ","解剖Ⅳ"],[[3,4],"解剖Ⅳ実習","解剖Ⅳ"],[[5],"S",""]],"2026-12-06":[[[1,2,3,4,5],"入試",""]],"2026-12-07":[[[1],"S",""],[[2],"S",""],[[3,4,5],"生化学実習","生化学実習"]],"2026-12-08":[[[1],"タンパク","タンパク"],[[2],"タンパク","タンパク"],[[3,4,5],"解剖Ⅳ実習","解剖Ⅳ"]],"2026-12-09":[[[1],"S",""],[[2],"S",""],[[3,4,5],"生化学実習","生化学実習"]],"2026-12-10":[[[1],"S",""],[[2],"糖脂","糖脂"],[[3,4,5],"生化学実習","生化学実習"]],"2026-12-11":[[[1],"S",""],[[2],"S",""],[[3,4,5],"生化学実習","生化学実習"]],"2026-12-15":[[[3,4],"タンパク試験",""]],"2026-12-16":[[[3,4],"組織・消化試験",""]],"2026-12-17":[[[1,2],"糖脂試験",""]],"2026-12-18":[[[1,2],"循呼試験",""]],"2026-12-21":[[[3,4],"筋骨試験",""]],"2026-12-22":[[[3,4],"解剖Ⅳ試験",""]],"2026-12-23":[[[3,4],"英語ⅠR再試",""]],"2027-01-01":[[[1,2,3,4,5],"元旦",""]],"2027-01-04":[[[3],"発生","発生"],[[4],"解剖","解剖Ⅳ"]],"2027-01-05":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-06":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-07":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-08":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-11":[[[1,2,3,4,5],"成人の日",""]],"2027-01-12":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-13":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-14":[[[1,2,3,4,5],"心肺蘇生","特別講義"]],"2027-01-15":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-18":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-19":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-20":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-22":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-25":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-26":[[[1],"発生","発生"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-27":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-28":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-01-29":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-01":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-02":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-03":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-04":[[[1],"S",""],[[2],"S",""],[[3],"S",""],[[4],"S",""],[[5],"S",""]],"2027-02-05":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-08":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-09":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-10":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-11":[[[1,2,3,4,5],"建国記念日",""]],"2027-02-12":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-15":[[[1],"S",""],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-16":[[[1],"解剖","解剖Ⅳ"],[[2],"解剖","解剖Ⅳ"],[[3,4,5],"人体解剖","人体解剖"]],"2027-02-17":[[[1,2,3,4,5],"入試（一般選抜A二次）",""]],"2027-02-18":[[[1,2,3,4,5],"入試（一般選抜A二次）",""]],"2027-02-22":[[[3,4],"人体解剖試験",""]],"2027-02-23":[[[1,2,3,4,5],"天皇誕生日",""]],"2027-02-24":[[[3,4],"発生試験",""]],"2027-02-25":[[[3,4],"筋骨再試",""]],"2027-02-26":[[[1,2],"糖脂再試",""]],"2027-02-27":[[[1,2,3,4,5],"入試（一般選抜B）",""]],"2027-03-01":[[[1,2],"タンパク再試",""]],"2027-03-02":[[[3,4],"解剖Ⅳ再試",""]],"2027-03-03":[[[1,2],"組織・消化再試",""]],"2027-03-04":[[[3,4],"循呼再試",""]],"2027-03-08":[[[1,2],"人体解剖再試",""],[[3,4],"発生再試",""]],"2027-03-21":[[[1,2,3,4,5],"春分の日",""]],"2027-03-22":[[[1,2,3,4,5],"振替休日",""]]},"s":{"人体解剖":{"f":"人体解剖実習","n":78},"関学授業日":{"f":"人文・社会系選択科目（関学）","n":70},"解剖Ⅳ":{"f":"器官・臓器の解剖Ⅳ","n":52},"英語Ⅰ":{"f":"General English Ⅰ","n":42},"自然科学実習":{"f":"自然科学実習","n":38},"医学概論入門":{"f":"医学概論入門（アカデミックリテラシー）","n":28},"ECEⅠ":{"f":"早期臨床体験実習Ⅰ","n":25},"医物":{"f":"医学物理学","n":23},"医情実B":{"f":"医情報学実習（B班）","n":22},"糖脂":{"f":"糖質と脂質の構造・代謝","n":21},"健康科学":{"f":"健康スポーツ科学","n":20},"筋骨":{"f":"器官・臓器の解剖Ⅱ（筋・骨格と末梢神経）","n":20},"消化":{"f":"組織総論と器官・臓器の解剖Ⅰ（消化器）","n":19},"心理":{"f":"人の行動と心理の科学","n":18},"細生":{"f":"細胞生物学","n":18},"タンパク":{"f":"タンパク質とアミノ酸の構造・機能・代謝","n":18},"循呼":{"f":"器官・臓器の解剖Ⅲ（循環・呼吸器）","n":18},"医情実A":{"f":"医情報学実習（A班）","n":16},"統計":{"f":"ライフサイエンスの基礎統計学","n":16},"生物":{"f":"生物学","n":15},"化学":{"f":"基礎生化学","n":14},"発生":{"f":"器官・臓器の発生","n":14},"基物化":{"f":"基礎物理化学","n":13},"組織":{"f":"組織総論と器官・臓器の解剖Ⅰ（消化器）","n":13},"ようこそ":{"f":"医学部へようこそ","n":12},"生化学実習":{"f":"生化学実習","n":12},"基礎理科":{"f":"基礎物理学・基礎化学・基礎生物学","n":10},"心理実A":{"f":"心理学実習（A班）","n":10},"特別講義":{"f":"特別講義","n":9},"医療コミ":{"f":"医療コミュニケーションと生命倫理","n":8},"TBL":{"f":"生化学統合TBL","n":8},"医情報":{"f":"医情報学","n":6},"動教訓":{"f":"動物実験に関する教育訓練","n":2}}};</script>
 <script>
 const DAYS=DATA.d, SUBS=DATA.s;
-const PAL=["#2c6b58","#c0453c","#4e7396","#b5811b","#7a5aa8","#3d8a6b","#b5566f","#59728a"];
 const MONTHS=[];for(let m=4;m<=12;m++)MONTHS.push([2026,m]);for(let m=1;m<=3;m++)MONTHS.push([2027,m]);
 const DOW=["月","火","水","木","金","土","日"];
 const CYCLE={"":"a",a:"l",l:"k",k:""};
 const MARK={a:"欠",l:"遅",k:"公"};
-const shortLab=t=>(t.replace(/（[^）]*）/g,"").replace(/\([^)]*\)/g,"").split("/")[0].trim()||t).slice(0,9);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad2=n=>String(n).padStart(2,"0");
+const shortLab=t=>(String(t).replace(/（[^）]*）/g,"").replace(/\([^)]*\)/g,"").split("/")[0].trim()||String(t)).slice(0,9);
 const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}};
 
-let members=[], marks={}, config={ratio:3,late:3,off:{}};
-let db=null, sel=null, me=LS("me")||null, mi=0, tab="cal", cview=LS("cview")||"year";
-const $=id=>document.getElementById(id);
+let fb=null, fref=null, user=null, online=false, localMode=false;
+let admins={}, roster={}, config={ratio:3,late:0}, myMarks={}, myOff={}, overrides={}, myName="";
+let TOTALS={}, tab="cal", cview=LS("cview")||"year", mi=0;
 
-/* ---------- persistence: Firebase when configured, else this device ---------- */
-let fref=null, online=false;
-function localSave(){
-  try{LS("members",JSON.stringify(members)); LS("marks",JSON.stringify(marks)); LS("config",JSON.stringify(config))}catch(e){}
+/* ---------- schedule ---------- */
+function dayItems(date){
+  const ov=overrides[date];
+  if(!ov) return DAYS[date]||[];
+  const out=[];
+  for(let p=1;p<=5;p++){ const c=ov[p]||ov[String(p)]; if(c&&c.t) out.push([[p],c.t,c.s||""]) }
+  return out;
 }
-const pend=new Set(); let ptimer=null;
-function save(who){
-  localSave();
-  if(!fref) return;
-  if(who){ pend.add(who); if(!ptimer) ptimer=setTimeout(()=>{ptimer=null;
-    pend.forEach(id=>fref.child("marks/"+id).set(marks[id]||null).catch(e=>flash("保存できませんでした: "+esc(e.message))));pend.clear()},400); }
+function computeTotals(){
+  const t={}, seen={};
+  Object.keys(DAYS).forEach(d=>seen[d]=1); Object.keys(overrides).forEach(d=>seen[d]=1);
+  Object.keys(seen).forEach(d=>dayItems(d).forEach(it=>{ if(it[2]) t[it[2]]=(t[it[2]]||0)+it[0].length }));
+  TOTALS=t;
 }
-function queueMarks(id){ save(id) }
-function saveConfig(){ localSave(); if(fref) fref.child("config").set({ratio:config.ratio,off:config.off||{}}) }
-function saveMember(m){ localSave(); if(fref&&m) fref.child("members/"+m.id).set({name:m.name,color:m.color,idx:m.idx}) }
-function setStatus(){
-  const el=$("status"); if(!el) return;
-  el.className="st "+(fref?(online?"on":"off"):"");
-  el.lastChild.textContent=fref?(online?"同期中":"接続待ち"):"この端末のみ";
-  const sc=$("syncCard"), sh=$("shareCard");
-  if(sc){ sc.hidden=!fref; $("syncState").textContent=fref?
-    (online?"つながっています。誰かがコマを押すと、全員の画面がすぐ切り替わります。":"インターネットに接続すると同期が再開します。"):""; }
-  if(sh) sh.hidden=!!fref;
-}
-function initFB(){
-  if(typeof FB_CONFIG==="undefined"||!FB_CONFIG.databaseURL||typeof firebase==="undefined") return false;
-  try{
-    firebase.initializeApp(FB_CONFIG);
-    fref=firebase.database().ref("rooms/"+(typeof ROOM!=="undefined"?ROOM:"default"));
-    const oops=e=>{ const m=String(e&&e.message||e);
-      flash(/permission|denied/i.test(m)
-        ? "データベースのルールで拒否されました。Firebaseの「ルール」タブで .read と .write を true にしてください。"
-        : "同期でエラーが出ました: "+esc(m)); };
-    fref.child("members").on("value",s=>{
-      const v=s.val()||{};
-      members=Object.keys(v).map(id=>Object.assign({id},v[id])).sort((x,y)=>(x.idx||0)-(y.idx||0));
-      if(!sel||!members.some(m=>m.id===sel)) sel=members.some(m=>m.id===me)?me:(members[0]||{}).id||null;
-      localSave(); renderAllViews();
-    },oops);
-    fref.child("marks").on("value",s=>{ marks=s.val()||{};
-      Object.keys(marks).forEach(k=>{if(!marks[k])marks[k]={}});
-      localSave(); renderAllViews(); },oops);
-    fref.child("config").on("value",s=>{ const v=s.val(); if(v){config=Object.assign({ratio:3,off:{}},v);config.off=config.off||{}}
-      localSave(); renderAllViews(); },oops);
-    firebase.database().ref(".info/connected").on("value",s=>{online=!!s.val();setStatus()});
-    return true;
-  }catch(e){ fref=null; return false }
-}
-function toggle(key,redraw){
-  if(!sel){ show("set"); return }
-  const m=members.find(x=>x.id===sel);
-  if(m&&m.ro&&!fref){ flash(esc(m.name)+" さんのぶんは読み取り専用です。上のチップで自分に切り替えてください。"); return }
-  const cur=(marks[sel]||(marks[sel]={}))[key]||"", nx=CYCLE[cur];
-  if(nx) marks[sel][key]=nx; else delete marks[sel][key];
-  save(sel); redraw(); renderStrip();
-}
-let flashT=null;
-function flash(html){
-  const t=$("toast"); t.innerHTML=html; t.hidden=false;
-  clearTimeout(flashT); flashT=setTimeout(()=>{t.hidden=true},2600);
-}
-function boot(){
-  try{
-    members=JSON.parse(LS("members")||"[]"); marks=JSON.parse(LS("marks")||"{}");
-    config=Object.assign(config,JSON.parse(LS("config")||"{}")); config.off=config.off||{};
-  }catch(e){}
-  sel=members.some(m=>m.id===me)?me:(members[0]||{}).id||null;
-  if(!initFB()){
-    const h=location.hash.match(/[#&]d=([^&]+)/);
-    if(h){ try{ importCode(decodeURIComponent(h[1]),true) }catch(e){} history.replaceState(null,"",location.pathname+location.search); }
-  }
-  setStatus(); renderAllViews();
-}
-
-/* ---------- share codes ---------- */
-const KEYS=(()=>{const l=[],seen={};Object.keys(DAYS).sort().forEach(d=>DAYS[d].forEach(it=>{
-  const k=d+"|"+it[0][0]; if(!seen[k]){seen[k]=1;l.push(k)}}));return l})();
-const KIDX=(()=>{const o={};KEYS.forEach((k,i)=>o[k]=i);return o})();
-const b64e=s=>btoa(String.fromCharCode.apply(null,new TextEncoder().encode(s))).replace(/=+$/,"");
-const b64d=s=>new TextDecoder().decode(Uint8Array.from(atob(s),c=>c.charCodeAt(0)));
-function exportCode(id){
-  const m=members.find(x=>x.id===id)||{}, mk=marks[id]||{}, parts=[];
-  for(const k in mk){ if(mk[k]&&KIDX[k]!==undefined) parts.push(KIDX[k].toString(36)+mk[k]) }
-  return "K1"+b64e((m.name||"?")+"\n"+parts.join("."));
-}
-function importCode(code,quiet){
-  code=(code||"").trim().replace(/\s+/g,"");
-  if(code.indexOf("K1")!==0) throw new Error("bad");
-  const txt=b64d(code.slice(2)), nl=txt.indexOf("\n");
-  const name=txt.slice(0,nl<0?txt.length:nl).slice(0,12)||"友だち";
-  const body=nl<0?"":txt.slice(nl+1);
-  const mk={};
-  body.split(".").forEach(p=>{ if(!p)return;
-    const st=p.slice(-1), k=KEYS[parseInt(p.slice(0,-1),36)];
-    if(k&&MARK[st]) mk[k]=st; });
-  let m=members.find(x=>x.name===name&&x.id!==me);
-  if(!m){ m={id:"f"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),name,color:PAL[members.length%PAL.length],idx:members.length,ro:1}; members.push(m) }
-  marks[m.id]=mk; localSave();
-  if(!quiet) flash(esc(name)+" さんの記録を読み込みました（"+Object.keys(mk).length+"件）");
-  renderAllViews();
-}
+function subName(k){ return (SUBS[k]&&SUBS[k].f)||k }
+function itemAt(date,p){ return dayItems(date).find(x=>x[0][0]===+p)||null }
 
 /* ---------- stats ---------- */
-function itemAt(date,p){ const d=DAYS[date]; if(!d) return null; return d.find(x=>x[0][0]===+p)||null; }
-function stats(id){
-  const m=marks[id]||{}, per={};
-  for(const key in m){
-    const st=m[key]; if(!st) continue;
+function stats(){
+  const per={};
+  for(const key in myMarks){
+    const st=myMarks[key]; if(!st) continue;
     const i=key.indexOf("|"); const it=itemAt(key.slice(0,i),key.slice(i+1));
     if(!it||!it[2]) continue;
     const o=per[it[2]]||(per[it[2]]={a:0,l:0,k:0});
@@ -467,46 +446,126 @@ function stats(id){
   return per;
 }
 function calc(key,o){
-  const total=SUBS[key].n, limit=Math.floor(total/config.ratio);
+  const total=TOTALS[key]||0, limit=Math.floor(total/config.ratio);
   const a=(o&&o.a)||0, l=(o&&o.l)||0, k=(o&&o.k)||0;
-  return {total,limit,a,l,k,eff:a,rest:limit-a};
+  const eff=a+(config.late>0?Math.floor(l/config.late):0);
+  return {total,limit,a,l,k,eff,rest:limit-eff};
 }
-const activeSubs=()=>Object.keys(SUBS).filter(k=>!config.off[k]);
+const activeSubs=()=>Object.keys(TOTALS).filter(k=>!myOff[k]).sort((x,y)=>TOTALS[y]-TOTALS[x]);
+const isAdmin=()=>localMode||!!(user&&admins[user.uid]);
 
-/* ---------- header ---------- */
-function renderWho(){
-  const w=$("who"); w.innerHTML="";
-  members.forEach(m=>{
-    const b=document.createElement("button");
-    b.className="chip"; b.setAttribute("aria-pressed",String(m.id===sel));
-    b.innerHTML='<span class="dot" style="background:'+m.color+'"></span>'+esc(m.name)+(m.id===me?' <span style="color:var(--muted);font-size:11px">自分</span>':'');
-    b.onclick=()=>{sel=m.id;renderAllViews()};
-    w.appendChild(b);
-  });
-  const a=document.createElement("button");
-  a.className="chip add"; a.textContent="＋ 人を追加";
-  a.onclick=()=>{ show("set"); setTimeout(()=>$("addName").focus(),60); };
-  w.appendChild(a);
-  $("setup").hidden=members.length>0;
+/* ---------- storage ---------- */
+function localSave(){
+  try{ LS("marks",JSON.stringify(myMarks)); LS("off",JSON.stringify(myOff));
+       LS("config",JSON.stringify(config)); LS("name",myName); LS("ovr",JSON.stringify(overrides)) }catch(e){}
 }
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function localLoad(){
+  try{ myMarks=JSON.parse(LS("marks")||"{}"); myOff=JSON.parse(LS("off")||"{}");
+       config=Object.assign(config,JSON.parse(LS("config")||"{}")); myName=LS("name")||"";
+       overrides=JSON.parse(LS("ovr")||"{}") }catch(e){}
+}
+const pend={m:false,o:false}; let ptimer=null;
+function saveMarks(){
+  localSave();
+  if(!fref||!user) return;
+  pend.m=true; if(!ptimer) ptimer=setTimeout(()=>{ ptimer=null;
+    if(pend.m){ pend.m=false; fref.child("users/"+user.uid+"/marks").set(myMarks).catch(e=>flash("保存できませんでした: "+esc(e.message))) }
+    if(pend.o){ pend.o=false; fref.child("users/"+user.uid+"/off").set(myOff).catch(()=>{}) }
+  },400);
+}
+function saveOff(){ localSave(); if(fref&&user){ pend.o=true; saveMarks() } }
+function saveName(n){
+  myName=n; localSave();
+  if(fref&&user) fref.child("members/"+user.uid).set({name:n}).catch(e=>flash("保存できませんでした: "+esc(e.message)));
+}
+function saveConfig(){
+  localSave();
+  if(fref&&isAdmin()) fref.child("config").set({ratio:config.ratio,late:config.late})
+    .catch(e=>flash("管理者だけが変更できます"));
+}
+function saveSchedule(date,obj){
+  overrides[date]=obj; computeTotals(); localSave();
+  if(fref&&isAdmin()) fref.child("schedule/"+date).set(obj).catch(e=>flash("管理者だけが変更できます"));
+  renderAllViews();
+}
+function clearSchedule(date){
+  delete overrides[date]; computeTotals(); localSave();
+  if(fref&&isAdmin()) fref.child("schedule/"+date).remove().catch(e=>flash("管理者だけが変更できます"));
+  renderAllViews();
+}
 
-/* ---------- calendar ---------- */
-function renderMonths(){
-  const el=$("months"); el.innerHTML="";
-  MONTHS.forEach(([y,m],i)=>{
-    const b=document.createElement("button");
-    b.textContent=(m===4&&i===0?"2026年 ":"")+(m===1?"2027年 ":"")+m+"月";
-    b.setAttribute("aria-current",String(i===mi));
-    b.onclick=()=>{mi=i;renderMonths();renderCal()};
-    el.appendChild(b);
-  });
+/* ---------- toast ---------- */
+let flashT=null;
+function flash(html){ const t=$("toast"); if(!t)return; t.innerHTML=html; t.hidden=false;
+  clearTimeout(flashT); flashT=setTimeout(()=>{t.hidden=true},3000) }
+
+/* ---------- firebase ---------- */
+function setStatus(){
+  const el=$("status");
+  el.className="st "+(fref?(online?"on":"off"):"");
+  el.lastChild.textContent=fref?(online?"同期中":"接続待ち"):"この端末のみ";
+  $("syncCard").hidden=!fref;
+  if(fref) $("syncState").textContent=online?"つながっています。記録はすぐ保存され、別の端末でログインしても同じ記録が出ます。":"インターネットに接続すると同期が再開します。入力はこの端末に残っています。";
+  $("syncNote").textContent=fref?"":((typeof FB_CONFIG!=="undefined"&&!FB_CONFIG.apiKey)
+    ? "Firebase の apiKey が未設定です。ファイル先頭の FB_CONFIG に apiKey を入れるとログインと同期が有効になります。いまはこの端末のブラウザにだけ保存しています。"
+    : "いまはサーバーにつながっていないため、この端末のブラウザにだけ保存しています。");
 }
-const pad2=n=>String(n).padStart(2,"0");
+function initFB(){
+  if(typeof FB_CONFIG==="undefined"||!FB_CONFIG.databaseURL||!FB_CONFIG.apiKey||typeof firebase==="undefined") return false;
+  try{
+    firebase.initializeApp(FB_CONFIG);
+    fb=firebase;
+    fref=firebase.database().ref("rooms/"+(typeof ROOM!=="undefined"?ROOM:"default"));
+    firebase.database().ref(".info/connected").on("value",s=>{online=!!s.val();setStatus()});
+    firebase.auth().onAuthStateChanged(u=>{ user=u||null; onAuth() });
+    return true;
+  }catch(e){ fref=null; return false }
+}
+function oops(e){
+  const m=String(e&&e.message||e);
+  flash(/permission|denied/i.test(m)
+    ? "データベースのルールで拒否されました。Firebaseの「ルール」タブを設定してください。"
+    : "同期エラー: "+esc(m));
+}
+let subbed=false;
+function onAuth(){
+  $("gate").hidden=!!user; $("app").hidden=!user;
+  if(!user){ return }
+  if(subbed) return; subbed=true;
+  fref.child("admins").on("value",s=>{ admins=s.val()||{}; renderAllViews() },oops);
+  fref.child("members").on("value",s=>{ roster=s.val()||{};
+    const mine=roster[user.uid]; myName=(mine&&mine.name)||myName||"";
+    renderAllViews() },oops);
+  fref.child("config").on("value",s=>{ const v=s.val(); if(v) config=Object.assign({ratio:3,late:0},v);
+    localSave(); renderAllViews() },oops);
+  fref.child("schedule").on("value",s=>{ overrides=s.val()||{}; computeTotals(); localSave(); renderAllViews() },oops);
+  fref.child("users/"+user.uid+"/marks").on("value",s=>{ if(!pend.m){ myMarks=s.val()||{}; localSave(); renderAllViews() } },oops);
+  fref.child("users/"+user.uid+"/off").on("value",s=>{ if(!pend.o){ myOff=s.val()||{}; localSave(); renderAllViews() } },oops);
+  if(!myName){ const n=(user.displayName||"").slice(0,12); if(n) saveName(n) }
+  renderAllViews();
+}
+$("signin").onclick=()=>{
+  if(!fb){ $("gateErr").textContent="Firebase の設定（apiKey）が入っていません。"; $("gateErr").hidden=false; return }
+  const p=new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(p).catch(e=>{
+    firebase.auth().signInWithRedirect(p).catch(()=>{
+      $("gateErr").textContent="ログインできませんでした: "+e.message; $("gateErr").hidden=false; });
+  });
+};
+$("signout").onclick=()=>{ if(fb) firebase.auth().signOut().then(()=>location.reload()) };
+
+/* ---------- toggle ---------- */
+function toggle(key,redraw){
+  const cur=myMarks[key]||"", nx=CYCLE[cur];
+  if(nx) myMarks[key]=nx; else delete myMarks[key];
+  saveMarks(); redraw(); renderStrip();
+}
+
+/* ---------- year grid ---------- */
 const BANDS=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]];
 function todayKey(){const t=new Date();return t.getFullYear()+"-"+pad2(t.getMonth()+1)+"-"+pad2(t.getDate())}
 function renderYear(){
-  const el=$("year"); el.innerHTML=""; const mm=marks[sel]||{}, tk=todayKey();
+  const el=$("year"); el.innerHTML=""; const tk=todayKey();
   const put=(g,cls,html,r,c,rs,cs,tag)=>{
     const d=document.createElement(tag||"div"); d.className=cls; if(html)d.innerHTML=html;
     d.style.gridRow=rs&&rs>1?r+" / span "+rs:r; d.style.gridColumn=cs&&cs>1?c+" / span "+cs:c;
@@ -523,48 +582,58 @@ function renderYear(){
     let c=2;
     spans.forEach(([y,m,dim])=>{ put(g,"mh",(m===4||m===1?y+"年 ":"")+m+"月",1,c,1,dim); c+=dim; });
     dates.forEach(([date,wd,dn],i)=>{
-      put(g,"dh",String(dn),2,i+2);
+      put(g,"dh",String(dn)+(overrides[date]?"*":""),2,i+2);
       put(g,"wh"+(wd===5?" sat":wd===6?" sun":""),DOW[wd],3,i+2);
     });
     for(let p=1;p<=5;p++) put(g,"rl",p+"",3+p,1);
     dates.forEach(([date,wd],i)=>{
-      const items=(DAYS[date]||[]), cov=[null,null,null,null,null];
+      const items=dayItems(date), cov=[null,null,null,null,null];
       items.forEach(it=>it[0].forEach(p=>{if(p>=1&&p<=5)cov[p-1]=it}));
       for(let p=1;p<=5;p++){
         const it=cov[p-1];
         if(it&&it[0][0]!==p) continue;
         if(!it){ put(g,"yc none"+(wd>4?" we":"")+(date===tk?" tdy":""),"",3+p,i+2); continue; }
-        const key=date+"|"+it[0][0], st=mm[key]||"", counted=!!it[2];
+        const key=date+"|"+it[0][0], st=myMarks[key]||"", counted=!!it[2];
         const cls="yc tap "+st+(counted?"":" gh")+(wd>4&&!st?" we":"")+(date===tk?" tdy":"");
         const b=put(g,cls,esc(shortLab(it[1])),3+p,i+2,it[0].length,1,"button");
-        b.title=(counted?SUBS[it[2]].f:it[1])+"（"+date+" "+it[0].join("・")+"限）"+(counted?"":"／集計対象外")+(st?" - "+MARK[st]:"");
+        b.title=(counted?subName(it[2]):it[1])+"（"+date+" "+it[0].join("・")+"限）"+(counted?"":"／集計対象外")+(st?" - "+MARK[st]:"");
         b.onclick=()=>toggle(key,renderYear);
       }
     });
     el.appendChild(g);
   });
 }
+
+/* ---------- month view ---------- */
+function renderMonths(){
+  const el=$("months"); el.innerHTML="";
+  MONTHS.forEach(([y,m],i)=>{
+    const b=document.createElement("button");
+    b.textContent=(i===0?"2026年 ":"")+(m===1?"2027年 ":"")+m+"月";
+    b.setAttribute("aria-current",String(i===mi));
+    b.onclick=()=>{mi=i;renderMonths();renderCal()};
+    el.appendChild(b);
+  });
+}
 function renderCal(){
   const [y,m]=MONTHS[mi], el=$("cal"); el.innerHTML="";
   DOW.forEach((d,i)=>{const h=document.createElement("div");h.className="dow"+(i===5?" sat":i===6?" sun":"");h.textContent=d;el.appendChild(h)});
-  const first=new Date(y,m-1,1), lead=(first.getDay()+6)%7, dim=new Date(y,m,0).getDate();
+  const first=new Date(y,m-1,1), lead=(first.getDay()+6)%7, dim=new Date(y,m,0).getDate(), tk=todayKey();
   for(let i=0;i<lead;i++){const p=document.createElement("div");p.className="day pad";el.appendChild(p)}
-  const today=new Date(), tk=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
   for(let d=1;d<=dim;d++){
-    const date=y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");
-    const items=(DAYS[date]||[]).filter(it=>it[1]!=="S");
+    const date=y+"-"+pad2(m)+"-"+pad2(d);
+    const items=dayItems(date).filter(it=>it[1]!=="S");
     const cell=document.createElement("div");
     cell.className="day"+(items.length?"":" empty")+(date===tk?" today":"");
     const wd=(new Date(y,m-1,d).getDay()+6)%7;
     cell.innerHTML='<div class="dnum"><b>'+d+'</b><span'+(wd>4?' style="color:var(--'+(wd===5?'excused':'absent')+')"':'')+'>'+DOW[wd]+'</span></div>';
     const box=document.createElement("div"); box.className="slots";
-    const mm=marks[sel]||{};
     items.forEach(it=>{
-      const key=date+"|"+it[0][0], st=mm[key]||"";
+      const key=date+"|"+it[0][0], st=myMarks[key]||"";
       const b=document.createElement("button");
       b.className="slot "+st+(it[2]?"":" ghost");
       b.innerHTML='<span class="p num">'+(it[0].length>1?it[0][0]+"-"+it[0][it[0].length-1]:it[0][0])+'</span><span class="t">'+esc(it[1])+'</span>'+(st?'<span class="mk">'+MARK[st]+'</span>':'');
-      b.title=(it[2]?SUBS[it[2]].f:it[1])+"（"+it[0].join("・")+"限）"+(it[2]?"":"／集計対象外");
+      b.title=(it[2]?subName(it[2]):it[1])+"（"+it[0].join("・")+"限）"+(it[2]?"":"／集計対象外");
       b.onclick=()=>toggle(key,renderCal);
       box.appendChild(b);
     });
@@ -572,145 +641,189 @@ function renderCal(){
   }
   const rem=(lead+dim)%7; if(rem) for(let i=rem;i<7;i++){const q=document.createElement("div");q.className="day pad";el.appendChild(q)}
 }
+
+/* ---------- strips / subjects ---------- */
+const tile=(k,v,u,bad)=>'<div><div class="k">'+k+'</div><div class="v num"'+(bad?' style="color:var(--danger)"':'')+'>'+v+'<span>'+u+'</span></div></div>';
 function renderStrip(){
-  const per=stats(sel), keys=activeSubs();
+  const per=stats(), keys=activeSubs();
   let a=0,l=0,risk=0,over=0;
   keys.forEach(k=>{const c=calc(k,per[k]);a+=c.a;l+=c.l;if(c.rest<0)over++;else if(c.rest<=1)risk++;});
-  $("calStrip").innerHTML=tile("欠席の合計",a,"コマ")+tile("遅刻の合計",l,"コマ")+tile("残り1コマ以下",risk,"科目")+tile("上限オーバー",over,"科目",over>0);
-  $("subStrip").innerHTML=$("calStrip").innerHTML;
+  const html=tile("欠席の合計",a,"コマ")+tile("遅刻の合計",l,"コマ")+tile("残り1コマ以下",risk,"科目")+tile("上限オーバー",over,"科目",over>0);
+  $("calStrip").innerHTML=html; $("subStrip").innerHTML=html;
 }
-const tile=(k,v,u,bad)=>'<div><div class="k">'+k+'</div><div class="v num"'+(bad?' style="color:var(--danger)"':'')+'>'+v+'<span>'+u+'</span></div></div>';
-
-/* ---------- subjects ---------- */
 function renderSubs(){
-  const per=stats(sel), el=$("subs"); el.innerHTML="";
-  Object.keys(SUBS).map(k=>[k,calc(k,per[k])])
-    .sort((x,y)=>(config.off[x[0]]?1:0)-(config.off[y[0]]?1:0)||x[1].rest-y[1].rest||y[1].total-x[1].total)
+  const per=stats(), el=$("subs"); el.innerHTML="";
+  Object.keys(TOTALS).map(k=>[k,calc(k,per[k])])
+    .sort((x,y)=>(myOff[x[0]]?1:0)-(myOff[y[0]]?1:0)||x[1].rest-y[1].rest||y[1].total-x[1].total)
     .forEach(([k,c])=>{
       const row=document.createElement("div");
-      row.className="sub"+(config.off[k]?" off":"");
+      row.className="sub"+(myOff[k]?" off":"");
       const col=c.rest<0?"var(--danger)":c.rest<=1?"var(--late)":"var(--ink)";
       const w=v=>Math.min(100,v/Math.max(1,c.limit)*100);
       row.innerHTML=
-        '<div class="sname">'+esc(k)+' <em>'+esc(SUBS[k].f)+'</em></div>'+
+        '<div class="sname">'+esc(k)+' <em>'+esc(subName(k))+'</em></div>'+
         '<div class="sright"><span class="rest num" style="color:'+col+'">'+c.rest+'<span>コマ休める</span></span>'+
-        '<button class="eye">'+(config.off[k]?"集計に戻す":"除外")+'</button></div>'+
+        '<button class="eye">'+(myOff[k]?"集計に戻す":"除外")+'</button></div>'+
         '<div class="bar"><i style="background:var(--absent);width:'+w(c.a)+'%"></i>'+
         '<i style="background:var(--late);width:'+w(c.eff-c.a)+'%"></i></div>'+
         '<div class="meta"><span class="num">全'+c.total+'コマ／上限'+c.limit+'コマ</span>'+
         '<span>欠席 <b class="num">'+c.a+'</b></span><span>遅刻 <b class="num">'+c.l+'</b></span>'+
         '<span>公欠 <b class="num">'+c.k+'</b></span></div>';
-      row.querySelector(".eye").onclick=()=>{
-        if(config.off[k]) delete config.off[k]; else config.off[k]=1;
-        saveConfig(); renderAllViews();
-      };
+      row.querySelector(".eye").onclick=()=>{ if(myOff[k]) delete myOff[k]; else myOff[k]=1; saveOff(); renderAllViews() };
       el.appendChild(row);
     });
 }
 
-/* ---------- everyone ---------- */
-function renderAll(){
-  const t=$("allTable"), keys=activeSubs();
-  if(!members.length){t.innerHTML='<tbody><tr><td>まだメンバーがいません。設定タブから追加してください。</td></tr></tbody>';return}
-  const all=members.map(m=>({m,per:stats(m.id)}));
-  let h='<thead><tr><th>科目</th><th>全コマ</th>'+all.map(x=>'<th>'+esc(x.m.name)+'</th>').join("")+'</tr></thead><tbody>';
-  h+='<tr><td><b>欠席コマ合計</b></td><td class="num">—</td>'+all.map(x=>{
-      let a=0;keys.forEach(k=>a+=calc(k,x.per[k]).a);return '<td class="num"><b>'+a+'</b></td>'}).join("")+'</tr>';
-  keys.map(k=>[k,members.map(m=>calc(k,all.find(x=>x.m.id===m.id).per[k]))])
-    .sort((x,y)=>Math.min(...x[1].map(c=>c.rest))-Math.min(...y[1].map(c=>c.rest)))
-    .forEach(([k,cs])=>{
-      h+='<tr><td>'+esc(k)+'</td><td class="num">'+cs[0].total+'</td>'+
-        cs.map(c=>'<td><span class="pill num '+(c.rest<0?"d":c.rest<=1?"w":"g")+'">'+c.rest+'</span></td>').join("")+'</tr>';
-    });
-  t.innerHTML=h+'</tbody>';
+/* ---------- roster / admins ---------- */
+function rosterList(){
+  if(localMode) return [["me",{name:myName||"あなた"}]];
+  const r=Object.keys(roster).map(uid=>[uid,roster[uid]]);
+  if(user&&!roster[user.uid]) r.push([user.uid,{name:myName||"あなた"}]);
+  return r.sort((a,b)=>String(a[1].name).localeCompare(String(b[1].name),"ja"));
 }
-
-/* ---------- settings ---------- */
-function renderSet(){
-  const el=$("mlist"); el.innerHTML="";
-  if(!members.length) el.innerHTML='<p style="color:var(--muted);font-size:13px;margin:0">まだ誰もいません。下から追加してください。</p>';
-  members.forEach(m=>{
-    const r=document.createElement("div"); r.className="mrow";
-    r.innerHTML='<span class="dot" style="background:'+m.color+'"></span><b>'+esc(m.name)+'</b>'+
-      (m.ro?'<span style="font-size:11px;color:var(--muted)">読み込み</span>':'')+
-      (m.id===me?'<span style="font-size:11px;color:var(--muted)">自分</span>':'<button class="mini" data-a="me">自分にする</button>')+
-      '<button class="mini" data-a="code">コードをコピー</button>'+
-      '<button class="mini" data-a="del">削除</button>';
-    const meB=r.querySelector('[data-a="me"]'); if(meB) meB.onclick=()=>{me=m.id;LS("me",me);sel=me;renderAllViews()};
-    r.querySelector('[data-a="code"]').onclick=()=>copyText(exportCode(m.id),m.name+" さんの共有コードをコピーしました");
-    const del=r.querySelector('[data-a="del"]');
-    del.onclick=()=>{
-      if(del.dataset.armed!=="1"){ del.dataset.armed="1"; del.textContent="本当に削除？"; del.style.color="var(--danger)";
-        setTimeout(()=>{if(del.isConnected){del.dataset.armed="";del.textContent="削除";del.style.color=""}},4000); return }
-      members=members.filter(x=>x.id!==m.id); delete marks[m.id];
-      if(me===m.id){me=null;LS("me","")} if(sel===m.id)sel=(members[0]||{}).id||null;
-      if(fref){fref.child("members/"+m.id).remove();fref.child("marks/"+m.id).remove()}
-      localSave(); renderAllViews(); flash(esc(m.name)+" さんを削除しました");
-    };
+function renderRoster(){
+  const el=$("roster"); el.innerHTML="";
+  const list=rosterList();
+  if(!list.length){ el.innerHTML='<p style="margin:0;font-size:13px;color:var(--muted)">まだ誰も登録していません。</p>'; return }
+  list.forEach(([uid,m])=>{
+    const r=document.createElement("div"); r.className="rorow";
+    r.innerHTML='<span class="nm">'+esc(m.name||"名前未設定")+(user&&uid===user.uid?' <span style="font-size:11px;color:var(--muted)">あなた</span>':'')+'</span>'+
+      (admins[uid]?'<span class="badge">管理者</span>':'');
     el.appendChild(r);
   });
-  $("ratio").value=config.ratio;
 }
-function copyText(t,msg){
-  const done=()=>flash(msg);
-  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done,()=>fallback()) } else fallback();
-  function fallback(){
-    const ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0";
-    document.body.appendChild(ta); ta.select();
-    try{document.execCommand("copy");done()}catch(e){ $("codeOut").value=t; $("codeOut").hidden=false; flash("下の枠のコードを長押しでコピーしてください") }
-    ta.remove();
+function renderAdminMgr(){
+  const card=$("adminMgr"), noAdmin=!localMode&&Object.keys(admins).length===0;
+  card.hidden=localMode||!(isAdmin()||noAdmin);
+  const el=$("adminList"); el.innerHTML="";
+  if(noAdmin){
+    const b=document.createElement("button"); b.className="btn"; b.textContent="自分を管理者にする";
+    b.onclick=()=>{ fref.child("admins/"+user.uid).set(true).catch(oops) };
+    el.appendChild(b); return;
   }
-}
-function addMember(name){
-  name=(name||"").trim(); if(!name) return;
-  const id="m"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  const m={id,name,color:PAL[members.length%PAL.length],idx:members.length};
-  members.push(m); saveMember(m);
-  marks[m.id]=marks[m.id]||{};
-  if(!me){me=id;LS("me",id)} sel=id; renderAllViews();
+  if(!isAdmin()||localMode) return;
+  const n=Object.keys(admins).length;
+  rosterList().forEach(([uid,m])=>{
+    const on=!!admins[uid];
+    const r=document.createElement("div"); r.className="rorow";
+    r.innerHTML='<span class="nm">'+esc(m.name||"名前未設定")+'</span>';
+    const b=document.createElement("button"); b.className="mini";
+    b.textContent=on?"管理者から外す":"管理者にする";
+    b.disabled=!on&&n>=2;
+    b.onclick=()=>{
+      if(on){ if(n<=1){flash("管理者が0人になるので外せません");return}
+        fref.child("admins/"+uid).remove().catch(oops) }
+      else { if(n>=2){flash("管理者は2人までです");return} fref.child("admins/"+uid).set(true).catch(oops) }
+    };
+    r.appendChild(b); el.appendChild(r);
+  });
 }
 
+/* ---------- schedule editor ---------- */
+function renderEditor(date){
+  const body=$("edBody"); body.innerHTML="";
+  const cur={}; dayItems(date).forEach(it=>it[0].forEach(p=>cur[p]=it));
+  const opts=['<option value="">集計しない（行事・試験など）</option>']
+    .concat(Object.keys(SUBS).sort((a,b)=>a.localeCompare(b,"ja"))
+      .map(k=>'<option value="'+esc(k)+'">'+esc(k)+' — '+esc(SUBS[k].f)+'</option>')).join("");
+  for(let p=1;p<=5;p++){
+    const it=cur[p];
+    const row=document.createElement("div"); row.className="ed";
+    row.innerHTML='<span class="pn">'+p+'</span><select>'+opts+'</select>'+
+      '<input type="text" placeholder="（空＝授業なし）" maxlength="20">';
+    row.querySelector("select").value=it?(it[2]||""):"";
+    row.querySelector("input").value=it?it[1]:"";
+    body.appendChild(row);
+  }
+  $("edRows").hidden=false;
+  $("edReset").hidden=!overrides[date];
+}
+$("edLoad").onclick=()=>{ const d=$("edDate").value; if(!d){flash("日付を選んでください");return} renderEditor(d) };
+$("edSave").onclick=()=>{
+  const d=$("edDate").value; if(!d) return;
+  const obj={}; let n=0;
+  [...$("edBody").children].forEach((row,i)=>{
+    const s=row.querySelector("select").value, t=row.querySelector("input").value.trim();
+    if(t){ obj[i+1]={t,s}; n++ }
+  });
+  saveSchedule(d,n?obj:{});
+  flash(d+" の時間割を保存しました");
+};
+$("edReset").onclick=()=>{ const d=$("edDate").value; if(!d)return; clearSchedule(d); renderEditor(d); flash(d+" を配付どおりに戻しました") };
+
+/* ---------- backup ---------- */
+$("expBtn").onclick=()=>{
+  const data={v:1,name:myName,marks:myMarks,off:myOff,ts:new Date().toISOString()};
+  const b=new Blob([JSON.stringify(data,null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(b);
+  a.download="kesseki-"+todayKey()+".json"; document.body.appendChild(a); a.click(); a.remove();
+  flash("バックアップを書き出しました");
+};
+$("impBtn").onclick=()=>$("impFile").click();
+$("impFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+      const d=JSON.parse(r.result);
+      if(d.marks) Object.assign(myMarks,d.marks);
+      if(d.off) Object.assign(myOff,d.off);
+      saveMarks(); saveOff(); renderAllViews(); flash("読み込みました（"+Object.keys(d.marks||{}).length+"件）");
+    }catch(err){ flash("ファイルを読めませんでした") } };
+  r.readAsText(f); e.target.value="";
+};
+
 /* ---------- shell ---------- */
+function renderWho(){
+  const w=$("who"); w.innerHTML="";
+  if(localMode){ w.innerHTML='<span class="me">'+esc(myName||"あなた")+'</span>'; }
+  else if(user){
+    w.innerHTML='<span class="me">'+(user.photoURL?'<img src="'+esc(user.photoURL)+'" alt="">':'')+
+      esc(myName||user.displayName||"あなた")+(isAdmin()?' <span class="badge">管理者</span>':'')+'</span>';
+  }
+  $("setup").hidden=!!myName;
+}
 function show(t){
   tab=t;
-  ["cal","sub","all","set"].forEach(k=>{
-    $("view-"+k).hidden=k!==t; $("tab-"+k).setAttribute("aria-selected",String(k===t));
-  });
+  ["cal","sub","mem","set"].forEach(k=>{ $("view-"+k).hidden=k!==t; $("tab-"+k).setAttribute("aria-selected",String(k===t)) });
   renderAllViews();
 }
 function renderAllViews(){
-  setStatus(); renderWho(); renderStrip();
+  computeTotals(); setStatus(); renderWho(); renderStrip();
   if(tab==="cal"){
     const y=cview==="year";
     $("year").hidden=!y; $("months").hidden=y; $("cal").hidden=y;
     $("sw-year").setAttribute("aria-pressed",String(y)); $("sw-month").setAttribute("aria-pressed",String(!y));
     $("calHint").textContent=y?"配付の年間スケジュールと同じ並びです。横にスクロールしてコマを押してください。":"月ごとに大きく表示します。";
-    if(y) renderYear(); else { renderMonths(); renderCal(); }
+    if(y) renderYear(); else { renderMonths(); renderCal() }
   }
-  if(tab==="sub")renderSubs();
-  if(tab==="all")renderAll();
-  if(tab==="set")renderSet();
+  if(tab==="sub") renderSubs();
+  if(tab==="mem") renderRoster();
+  if(tab==="set"){
+    $("dispName").value=myName||"";
+    $("ratio").value=config.ratio; $("late").value=config.late;
+    $("adminCard").hidden=!isAdmin(); $("schedCard").hidden=!isAdmin();
+    $("acct").textContent=user?(user.email||""):"";
+    $("acctRow").hidden=!user;
+    renderAdminMgr();
+  }
 }
-["cal","sub","all","set"].forEach(k=>$("tab-"+k).onclick=()=>show(k));
+["cal","sub","mem","set"].forEach(k=>$("tab-"+k).onclick=()=>show(k));
 $("sw-year").onclick=()=>{cview="year";LS("cview","year");renderAllViews()};
 $("sw-month").onclick=()=>{cview="month";LS("cview","month");renderAllViews()};
-$("addFirst").onclick=()=>{addMember($("newName").value);$("newName").value=""};
+$("addFirst").onclick=()=>{ const v=$("newName").value.trim(); if(!v){flash("名前を入れてください");return} saveName(v); renderAllViews() };
 $("newName").onkeydown=e=>{if(e.key==="Enter")$("addFirst").click()};
-$("addBtn").onclick=()=>{addMember($("addName").value);$("addName").value="";show("set")};
-$("addName").onkeydown=e=>{if(e.key==="Enter")$("addBtn").click()};
-$("myCode").onclick=()=>{ if(!me){flash("先に自分を追加してください");return} copyText(exportCode(me),"自分の共有コードをコピーしました") };
-$("readCode").onclick=()=>{
-  const v=$("codeIn").value.trim();
-  if(!v){flash("コードを貼り付けてください");return}
-  try{ importCode(v); $("codeIn").value="" }catch(e){ flash("コードが正しくないようです") }
-};
+$("saveName").onclick=()=>{ const v=$("dispName").value.trim(); if(!v){flash("名前を入れてください");return} saveName(v); flash("保存しました"); renderAllViews() };
 $("ratio").onchange=e=>{config.ratio=+e.target.value;saveConfig();renderAllViews()};
+$("late").onchange=e=>{config.late=+e.target.value;saveConfig();renderAllViews()};
 $("theme").onchange=e=>{const v=e.target.value;LS("theme",v);
   if(v==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",v)};
 (function(){const t=LS("theme")||"auto";$("theme").value=t;if(t!=="auto")document.documentElement.setAttribute("data-theme",t)})();
-const now=new Date(), idx=MONTHS.findIndex(([y,m])=>y===now.getFullYear()&&m===now.getMonth()+1);
-mi=idx>=0?idx:0;
-boot();
+const now=new Date(), ix=MONTHS.findIndex(([y,m])=>y===now.getFullYear()&&m===now.getMonth()+1);
+mi=ix>=0?ix:0;
+
+localLoad();
+if(!initFB()){ localMode=true; $("gate").hidden=true; $("app").hidden=false; }
+computeTotals(); renderAllViews();
 (function(){const t=$("year").querySelector(".tdy");if(t&&t.scrollIntoView)
   try{t.scrollIntoView({block:"nearest",inline:"center"})}catch(e){}})();
 </script>
