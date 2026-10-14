@@ -231,7 +231,8 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 .ed select,.ed input{width:100%}
 .rolist{display:flex;flex-direction:column;gap:8px}
 .rorow{display:flex;gap:10px;align-items:center;font-size:14px}
-.rorow .nm{flex:1}
+.rorow .nm{flex:1;line-height:1.4}
+.rorow .mail{font-size:11px;color:var(--muted);font-family:"JetBrains Mono",monospace;word-break:break-all}
 .privacy{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--surface);
   border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);line-height:1.7;margin-top:14px}
 .banner{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px;
@@ -249,6 +250,12 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
   display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;justify-content:space-between;
   font-size:12px;color:var(--faint);letter-spacing:.04em}
 .foot .by{font-weight:500;color:var(--muted)}
+.warn{border:1px solid var(--late);background:var(--late-bg);border-radius:var(--r);
+  padding:16px;text-align:left;margin-bottom:18px}
+.warn b{color:var(--late)}
+.warn p{margin:8px 0 0;font-size:13px;color:var(--ink);line-height:1.7}
+.warn p.small{font-size:12px;color:var(--muted)}
+.warn .btn{margin-top:12px}
 [hidden]{display:none!important}
 @media (max-width:760px){
   .cal{grid-template-columns:1fr;background:var(--surface)}
@@ -284,6 +291,14 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
 <div id="gate" class="gate" hidden>
   <h2>ログインしてはじめる</h2>
   <p>あなたの欠席記録はあなたにしか見えません。<br>同じクラスの人と同じページを使っても、お互いの中身は見えない仕組みです。</p>
+  <div id="inapp" hidden>
+    <div class="warn">
+      <b>このアプリ内のブラウザではログインできません</b>
+      <p>LINE や Instagram などのアプリに内蔵されたブラウザは、Google ログインを受け付けません。<b>Safari</b> か <b>Chrome</b> で開き直してください。</p>
+      <p class="small">画面右下の「…」や共有ボタンから「ブラウザで開く」「Safari で開く」を選ぶか、下のボタンでURLをコピーしてブラウザに貼り付けてください。</p>
+      <button class="btn" id="copyUrl">URL をコピー</button>
+    </div>
+  </div>
   <button class="gbtn" id="signin">Google でログイン</button>
   <p id="gateHint" style="margin-top:14px;font-size:12px;color:var(--muted)" hidden></p>
   <p id="gateErr" style="color:var(--danger);margin-top:16px;font-size:13px" hidden></p>
@@ -335,7 +350,7 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
     <div class="card">
       <h2>このクラスのメンバー <span class="badge">管理者のみ</span></h2>
       <div class="rolist" id="roster"></div>
-      <div class="privacy">このタブは管理者だけに表示されます。一般のメンバーには、誰がこのページを使っているかも、他人の記録も見えません。管理者は代理で記録を直せます。</div>
+      <div class="privacy">このタブは管理者だけに表示されます。一般のメンバーには、誰がこのページを使っているかも、他人の記録も見えません。名前とログインに使っているメールアドレスは管理者のみ確認でき、管理者は代理で記録を直せます。</div>
     </div>
   </section>
 
@@ -424,7 +439,7 @@ textarea{border:1px solid var(--line);background:var(--surface);color:var(--ink)
   </section>
 
   <footer class="foot">
-    <span>欠席バジェット <b class="num">v1.5</b>（2026-10-12）</span>
+    <span>欠席バジェット <b class="num">v1.7</b>（2026-10-12）</span>
     <span class="by">by なお</span>
   </footer>
 </div>
@@ -517,7 +532,7 @@ function saveMarks(){
 }
 function saveName(n){
   myName=n; localSave();
-  if(fref&&user) fref.child("members/"+user.uid).set({name:n}).catch(e=>flash("保存できませんでした: "+esc(e.message)));
+  if(fref&&user) fref.child("members/"+user.uid).update({name:n,email:user.email||""}).catch(e=>flash("保存できませんでした: "+esc(e.message)));
 }
 function saveConfig(){
   config.lockSet=true;
@@ -584,6 +599,7 @@ function onAuth(){
   fref.child("schedule").on("value",s=>{ overrides=s.val()||{}; computeTotals(); localSave(); renderAllViews() },oops);
   subscribeTarget(user.uid,"");
   if(!myName){ const n=(user.displayName||"").slice(0,12); if(n) saveName(n) }
+  fref.child("members/"+user.uid+"/email").set(user.email||"").catch(()=>{});
   renderAllViews();
 }
 function subscribeTarget(uid,name){
@@ -597,9 +613,19 @@ function subscribeTarget(uid,name){
   renderAllViews();
 }
 $("bannerBack").onclick=()=>{ if(user) subscribeTarget(user.uid,"") };
+const UA=navigator.userAgent||"";
+const inApp=/\bLine\//i.test(UA)||/FBAN|FBAV|Instagram|Twitter|MicroMessenger/i.test(UA)
+  ||(/iPhone|iPad/.test(UA)&&!/Safari/.test(UA)&&!/CriOS|FxiOS|EdgiOS/.test(UA));
 function gateErr(msg){ $("gateErr").innerHTML=msg; $("gateErr").hidden=false }
 const isFile=location.protocol==="file:";
+$("copyUrl").onclick=()=>{
+  const u=location.href.split("#")[0];
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(()=>flash("URLをコピーしました"),()=>{});
+  else { const ta=document.createElement("textarea"); ta.value=u; document.body.appendChild(ta); ta.select();
+    try{document.execCommand("copy");flash("URLをコピーしました")}catch(e){} ta.remove() }
+};
 $("signin").onclick=()=>{
+  if(inApp){ gateErr("このアプリ内ブラウザでは Google ログインが使えません。Safari か Chrome で開き直してください。"); return }
   if(isFile){ gateErr("このファイルを直接開いた状態ではログインできません。<br>GitHub Pages などの <b>https://</b> から始まるURLで開いてください。"); return }
   if(!fb){ gateErr("Firebase の設定（apiKey）が入っていません。"); return }
   const p=new firebase.auth.GoogleAuthProvider();
@@ -766,7 +792,8 @@ function renderRoster(){
   if(!list.length){ el.innerHTML='<p style="margin:0;font-size:13px;color:var(--muted)">まだ誰も登録していません。</p>'; return }
   list.forEach(([uid,m])=>{
     const r=document.createElement("div"); r.className="rorow";
-    r.innerHTML='<span class="nm">'+esc(m.name||"名前未設定")+(user&&uid===user.uid?' <span style="font-size:11px;color:var(--muted)">あなた</span>':'')+'</span>'+
+    r.innerHTML='<span class="nm">'+esc(m.name||"名前未設定")+(user&&uid===user.uid?' <span style="font-size:11px;color:var(--muted)">あなた</span>':'')+
+      (m.email?'<br><span class="mail">'+esc(m.email)+'</span>':'')+'</span>'+
       (admins[uid]?'<span class="badge">管理者</span>':'');
     if(!localMode&&user&&uid!==user.uid&&isAdmin()){
       const b=document.createElement("button"); b.className="mini";
@@ -928,6 +955,7 @@ $("theme").onchange=e=>{const v=e.target.value;LS("theme",v);
 const now=new Date(), ix=MONTHS.findIndex(([y,m])=>y===now.getFullYear()&&m===now.getMonth()+1);
 mi=ix>=0?ix:0;
 
+if(inApp){ $("inapp").hidden=false; $("signin").style.opacity=".45"; }
 if(location.protocol==="file:"){ const g=$("gateHint"); g.hidden=false;
   g.innerHTML="いまファイルを直接開いています。ログインするには <b>https://</b> のURLから開いてください。"; }
 localLoad();
